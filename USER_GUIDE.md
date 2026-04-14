@@ -106,15 +106,16 @@ Echo gives you:
 | Python | 3.7+ |
 | pip | 21+ |
 
-The backend has the following Python dependencies (install via pip):
+The FastAPI backend has the following Python dependencies:
 
 ```
 fastapi
 uvicorn[standard]
 sqlalchemy
 pydantic
-requests
 ```
+
+The Python SDK depends on `requests`, but installing the SDK package will pull that in automatically.
 
 No external database, message queue, or cloud service is required to get started — Echo uses SQLite by default.
 
@@ -134,7 +135,7 @@ cd stunning-potato
 **Step 2 — Install dependencies**
 
 ```bash
-pip install fastapi "uvicorn[standard]" sqlalchemy pydantic requests
+pip install fastapi "uvicorn[standard]" sqlalchemy pydantic
 ```
 
 **Step 3 — Start the server**
@@ -209,7 +210,7 @@ Every change to an asset creates a new **Version**. Versions are immutable once 
 | `change_summary` | Human-readable description of what changed |
 | `created_by` | Author identifier |
 
-Only **one version per asset** can be `active` at a time. Activating a new version automatically moves the previous one to `approved`.
+Only **one version per asset** can be `active` at a time. Activating a new version automatically sets all other versions for that asset to `approved`, then marks the selected version as `active`.
 
 ### 5.3 Execution Logs
 
@@ -267,7 +268,7 @@ The new asset appears in the asset list immediately.
 To promote an existing version to `active` (e.g. after a review):
 
 1. Find the version in the version list.
-2. Click **Activate**. The version status changes to `active` and the previously active version moves to `approved`.
+2. Click **Activate**. The selected version becomes `active`, and all other versions for that asset are set to `approved`.
 
 Your running applications will serve the new prompt on their **next** call to `get_active_prompt()` — no restart required.
 
@@ -375,9 +376,11 @@ result = client.check_ci_gate(
     is_ai_related=True,
 )
 # result["status"] is "pass", "warn", or "block"
-# result["reason"] explains the outcome
+# reviewed changes return result["reasons"]; fast-path responses may return result["reason"]
 if result["status"] == "block":
-    raise SystemExit(f"CI Gate blocked: {result['reason']}")
+    reasons = result.get("reasons") or [result.get("reason", "Unknown CI gate result")]
+    reason_text = "; ".join(reasons)
+    raise SystemExit(f"CI Gate blocked: {reason_text}")
 ```
 
 ---
@@ -393,7 +396,7 @@ Interactive docs: `http://localhost:8000/docs`
 
 #### `POST /api/assets/` — Create asset
 
-```json
+```jsonc
 // Request body
 {
   "name": "my_asset",
@@ -564,13 +567,16 @@ Returns the change request linked to the given commit SHA.
 
 Response:
 
-```json
+```jsonc
 {
   "status": "pass",     // "pass" | "warn" | "block"
-  "reason": "All checks passed",
-  "commit_sha": "abc1234def5678"
+  "commit_sha": "abc1234def5678",
+  "change_request": null,
+  "reasons": ["All checks passed"]
 }
 ```
+
+When the commit is linked to a Change Request, the backend returns `change_request` and `reasons` as shown above. For the current fast-path cases with no linked Change Request, the backend returns a single `reason` string instead.
 
 Gate logic:
 
@@ -663,7 +669,8 @@ jobs:
               commit_sha=os.environ["COMMIT_SHA"],
               is_ai_related=True,
           )
-          print(f"Gate status: {result['status']} — {result['reason']}")
+          reasons = result.get("reasons") or [result.get("reason", "Unknown CI gate result")]
+          print(f"Gate status: {result['status']} — {'; '.join(reasons)}")
           if result["status"] == "block":
               sys.exit(1)
           EOF
@@ -672,7 +679,7 @@ jobs:
 **Setup steps:**
 
 1. Add `ECHO_BASE_URL` as a GitHub Actions secret (e.g. `https://echo.yourcompany.com`).
-2. Before merging a PR that changes a prompt, create a Change Request via the SDK or API (see [§8.5](#85-change-request-apis)), linking the PR commit SHA to the asset version and providing the review status.
+2. Before merging a PR that changes a prompt, create a Change Request via the API (see [§8.5](#85-change-request-apis)), linking the PR commit SHA to the asset version and providing the review status.
 3. The gate step will `pass` or `warn` for low/medium risk approved changes and `block` for unapproved high-risk changes, preventing the merge.
 
 ---
@@ -712,7 +719,8 @@ jobs:
   ```python
   SQLALCHEMY_DATABASE_URL = "postgresql://user:password@localhost/echo"
   ```
-  Then `pip install psycopg2-binary` and restart.
+- The current `create_engine(...)` call in `main.py` passes `connect_args={"check_same_thread": False}`, which is SQLite-specific. Remove that argument or make it conditional before switching to PostgreSQL.
+- Then `pip install psycopg2-binary` and restart.
 
 ---
 
@@ -731,7 +739,7 @@ A: Yes. Echo stores and serves prompt configurations — it is provider-agnostic
 A: In the dashboard, navigate to the asset's version list, find a previous version, and click **Activate**. The rollback is instantaneous.
 
 **Q: Does Echo cache prompts on the SDK side?**  
-A: No. Each call to `get_active_prompt` makes a live HTTP request to ensure you always receive the latest version. If you require caching for latency or reliability reasons, add a short TTL cache (e.g. using `functools.lru_cache` with a time-based invalidation) in your application layer.
+A: No. Each call to `get_active_prompt` makes a live HTTP request to ensure you always receive the latest version. If you require caching for latency or reliability reasons, add a short TTL cache in your application layer using a library with time-based expiry (for example, `cachetools.TTLCache`) or implement an explicit refresh-every-N-seconds pattern.
 
 **Q: Can multiple assets be active simultaneously?**  
 A: Yes. Each asset is independent. You can have hundreds of assets, each with its own active version.
