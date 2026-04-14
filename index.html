@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Echo Prompt Manager</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel2: #0b1220;
+      --border: #243244;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #0b1020 0%, #0f172a 100%);
+      color: var(--text);
+    }
+    header {
+      padding: 20px 24px 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.85);
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(10px);
+      z-index: 10;
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    .sub { color: var(--muted); font-size: 13px; }
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      margin-top: 14px;
+      align-items: center;
+    }
+    .api-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    input, select, textarea, button {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    input, select { min-width: 180px; }
+    textarea { width: 100%; min-height: 110px; resize: vertical; }
+    button {
+      cursor: pointer;
+      background: #172033;
+    }
+    button.primary { background: var(--accent); color: #08111f; border-color: transparent; font-weight: 700; }
+    button.good { background: var(--good); color: #04120a; border-color: transparent; font-weight: 700; }
+    button.warn { background: var(--warn); color: #1a1202; border-color: transparent; font-weight: 700; }
+    button.bad { background: var(--bad); color: #1a0505; border-color: transparent; font-weight: 700; }
+    main { padding: 20px 24px 36px; max-width: 1500px; margin: 0 auto; }
+    .grid { display: grid; gap: 16px; }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .panel {
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .panel h2 { margin: 0 0 12px; font-size: 18px; }
+    .panel h3 { margin: 0 0 10px; font-size: 15px; color: #dbeafe; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .status {
+      display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700;
+      border: 1px solid var(--border); margin-left: 8px;
+    }
+    .status.pass { color: var(--good); }
+    .status.warn { color: var(--warn); }
+    .status.block { color: var(--bad); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top;
+      font-size: 13px;
+    }
+    th { color: #bfdbfe; font-weight: 700; }
+    td code { white-space: pre-wrap; word-break: break-word; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+    .tab-btn.active { background: var(--accent); color: #08111f; border-color: transparent; font-weight: 700; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .footer-note { margin-top: 14px; color: var(--muted); font-size: 12px; }
+    .two-col { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 16px; }
+    .stack { display: grid; gap: 10px; }
+    .small { font-size: 12px; }
+    .listbox {
+      border: 1px solid var(--border); border-radius: 12px; background: #0b1220; padding: 10px;
+      max-height: 280px; overflow: auto;
+    }
+    .item { padding: 8px 10px; border-bottom: 1px solid #1f2a3b; cursor: pointer; }
+    .item:last-child { border-bottom: 0; }
+    .item:hover { background: rgba(96,165,250,0.08); }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#172033; border:1px solid var(--border); font-size:12px; margin-right:4px; }
+    .json { white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Echo Prompt Manager</h1>
+  <div class="sub">Asset Registry 资产登记 · Version Control 版本管理 · Change Linkage 变更关联 · CI Gate · Execution Logs 留痕复盘</div>
+  <div class="topbar">
+    <div class="api-row">
+      <input id="apiBase" placeholder="API Base URL" value="http://127.0.0.1:8000" />
+      <button onclick="saveApiBase()">Save / 保存</button>
+      <button onclick="refreshAll()">Refresh All / 刷新全部</button>
+      <button onclick="pingHealth()">Health / 健康检查</button>
+    </div>
+    <div id="healthBox" class="muted">Not Checked / 未检查</div>
+  </div>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="assets" onclick="openTab('assets')">Assets / 资产</button>
+    <button class="tab-btn" data-tab="versions" onclick="openTab('versions')">Versions / 版本</button>
+    <button class="tab-btn" data-tab="changes" onclick="openTab('changes')">Changes / 变更</button>
+    <button class="tab-btn" data-tab="logs" onclick="openTab('logs')">Logs / 日志</button>
+    <button class="tab-btn" data-tab="gate" onclick="openTab('gate')">CI Gate</button>
+  </div>
+
+  <section id="assets" class="tab active grid cols-2">
+    <div class="panel">
+      <h2>Create Asset / 创建资产</h2>
+      <div class="stack">
+        <input id="assetName" placeholder="Name / 名称, e.g., customer_service_vqa" />
+        <select id="assetType">
+          <option value="prompt">prompt</option>
+          <option value="context_pack">context_pack</option>
+          <option value="skill">skill</option>
+          <option value="workflow">workflow</option>
+        </select>
+        <input id="assetOwner" placeholder="Owner / 负责人" />
+        <input id="assetTags" placeholder="Tags / 标签, comma separated / 逗号分隔" />
+        <textarea id="assetDesc" placeholder="Description / 描述"></textarea>
+        <button class="primary" onclick="createAsset()">Submit Asset / 提交资产</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Asset List / 资产列表</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <input id="assetSearch" placeholder="Search name/desc/owner 搜索名称/描述/负责人" oninput="loadAssets()" />
+        <select id="assetTypeFilter" onchange="loadAssets()">
+          <option value="">All Types / 全部类型</option>
+          <option value="prompt">prompt</option>
+          <option value="context_pack">context_pack</option>
+          <option value="skill">skill</option>
+          <option value="workflow">workflow</option>
+        </select>
+      </div>
+      <div id="assetsList" class="listbox"></div>
+    </div>
+  </section>
+
+  <section id="versions" class="tab grid cols-2">
+    <div class="panel">
+      <h2>Create Version / 创建版本</h2>
+      <div class="stack">
+        <input id="versionAssetId" placeholder="asset_id" />
+        <input id="versionTag" placeholder="version_tag, e.g., v1.0" />
+        <input id="versionCreatedBy" placeholder="created_by / 创建者" />
+        <input id="versionChangeSummary" placeholder="change_summary / 变更摘要" />
+        <label class="small"><input type="checkbox" id="versionActive" checked /> set_active / 设为激活</label>
+        <textarea id="versionSystemPrompt" placeholder="system_prompt / 系统提示词"></textarea>
+        <textarea id="versionContextTemplate" placeholder="context_template / 上下文模板"></textarea>
+        <textarea id="versionWorkflowSpec" placeholder='workflow_spec JSON, e.g., {"steps": []}'></textarea>
+        <textarea id="versionExamples" placeholder='examples JSON array / 示例数组'></textarea>
+        <textarea id="versionGuardrails" placeholder='guardrails JSON array / 护栏数组'></textarea>
+        <textarea id="versionSchema" placeholder='variables_schema JSON / 变量格式'></textarea>
+        <button class="primary" onclick="createVersion()">Submit Version / 提交版本</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Asset Versions / 资产版本</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <input id="versionListAssetId" placeholder="asset_id" />
+        <button onclick="loadVersions()">Load / 加载</button>
+      </div>
+      <div id="versionsList" class="listbox"></div>
+    </div>
+  </section>
+
+  <section id="changes" class="tab grid cols-2">
+    <div class="panel">
+      <h2>Register Change / 登记变更</h2>
+      <div class="stack">
+        <input id="changeCommitSha" placeholder="commit_sha" />
+        <input id="changePrId" placeholder="pr_id (optional / 可选)" />
+        <input id="changeAssetId" placeholder="asset_id" />
+        <input id="changeVersionId" placeholder="asset_version_id" />
+        <select id="changeRiskLevel">
+          <option value="low">low / 低风险</option>
+          <option value="medium">medium / 中风险</option>
+          <option value="high">high / 高风险</option>
+        </select>
+        <select id="changeReviewRequired">
+          <option value="false">review_required = false / 无需审核</option>
+          <option value="true">review_required = true / 需要审核</option>
+        </select>
+        <select id="changeReviewStatus">
+          <option value="pending">pending / 待处理</option>
+          <option value="approved">approved / 已通过</option>
+          <option value="rejected">rejected / 已拒绝</option>
+          <option value="skipped">skipped / 已跳过</option>
+        </select>
+        <input id="changeCreatedBy" placeholder="created_by / 创建者" />
+        <input id="changeImpactScope" placeholder="impact_scope, comma separated / 影响范围" />
+        <textarea id="changeNotes" placeholder="notes / 备注"></textarea>
+        <button class="primary" onclick="createChange()">Submit Change / 提交变更</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>View Changes / 查看变更</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <input id="changeLookup" placeholder="commit_sha" />
+        <button onclick="loadChange()">Search / 查询</button>
+        <button onclick="loadChanges()">Refresh List / 刷新列表</button>
+      </div>
+      <div id="changeDetail" class="listbox" style="margin-bottom:12px;"></div>
+      <div id="changesList" class="listbox"></div>
+    </div>
+  </section>
+
+  <section id="logs" class="tab grid cols-2">
+    <div class="panel">
+      <h2>Record Log / 写入日志</h2>
+      <div class="stack">
+        <input id="logVersionId" placeholder="asset_version_id" />
+        <input id="logRequestId" placeholder="request_id (optional / 可选)" />
+        <input id="logModelName" placeholder="model_name / 模型名称" />
+        <input id="logCreatedBy" placeholder="created_by / 创建者" />
+        <input id="logLatency" placeholder="latency_ms / 延迟(毫秒)" type="number" />
+        <input id="logTokens" placeholder="token_usage / Token 用量" type="number" />
+        <textarea id="logInputVars" placeholder='input_variables JSON, e.g., {"user_input":"help"}'></textarea>
+        <textarea id="logOutput" placeholder="llm_output / 模型输出"></textarea>
+        <button class="primary" onclick="createLog()">Submit Log / 提交日志</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Execution Logs / 执行日志</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <input id="logsFilterVersionId" placeholder="asset_version_id (optional / 可选)" />
+        <input id="logsFilterRequestId" placeholder="request_id (optional / 可选)" />
+        <button onclick="loadLogs()">Load / 加载</button>
+      </div>
+      <div id="logsList" class="listbox"></div>
+    </div>
+  </section>
+
+  <section id="gate" class="tab grid cols-2">
+    <div class="panel">
+      <h2>CI Gate Check / CI 拦截检查</h2>
+      <div class="stack">
+        <input id="gateCommitSha" placeholder="commit_sha" />
+        <label class="small"><input type="checkbox" id="gateAiRelated" checked /> is_ai_related / 是否 AI 相关</label>
+        <button class="primary" onclick="checkGate()">Run Check / 运行检查</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Check Results / 检查结果</h2>
+      <div id="gateResult" class="listbox"></div>
+    </div>
+  </section>
+
+  <div class="footer-note">
+    Ensure FastAPI backend is running; defaults to <code>http://127.0.0.1:8000</code>. <br>
+    请确保 FastAPI 后端已运行；默认读取地址为 <code>http://127.0.0.1:8000</code>。
+  </div>
+</main>
+
+<script>
+  const state = {
+    apiBase: localStorage.getItem('echo_api_base') || 'http://127.0.0.1:8000'
+  };
+  document.getElementById('apiBase').value = state.apiBase;
+
+  function saveApiBase() {
+    state.apiBase = document.getElementById('apiBase').value.trim().replace(/\/$/, '');
+    localStorage.setItem('echo_api_base', state.apiBase);
+    toast('API Base saved / API 地址已保存: ' + state.apiBase);
+  }
+
+  function openTab(name) {
+    document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(name).classList.add('active');
+    document.querySelector(`.tab-btn[data-tab="${name}"]`).classList.add('active');
+  }
+
+  function toast(msg) {
+    console.log(msg);
+    document.getElementById('healthBox').textContent = msg;
+  }
+
+  function joinTags(value) {
+    return value.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  function safeJsonParse(text, fallback) {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return fallback;
+    return JSON.parse(trimmed);
+  }
+
+  async function request(path, options = {}) {
+    const base = (document.getElementById('apiBase').value || state.apiBase).trim().replace(/\/$/, '');
+    const url = base + path;
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const res = await fetch(url, { ...options, headers });
+    const text = await res.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+    if (!res.ok) {
+      const msg = data?.detail || data?.message || JSON.stringify(data);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  async function pingHealth() {
+    try {
+      const data = await request('/health');
+      document.getElementById('healthBox').textContent = 'Health OK: ' + JSON.stringify(data);
+    } catch (e) {
+      document.getElementById('healthBox').textContent = 'Health Check Failed / 检查失败: ' + e.message;
+    }
+  }
+
+  async function refreshAll() {
+    await Promise.allSettled([loadAssets(), loadChanges(), loadLogs()]);
+    toast('Refreshed All / 已刷新全部');
+  }
+
+  async function createAsset() {
+    try {
+      const payload = {
+        name: document.getElementById('assetName').value.trim(),
+        asset_type: document.getElementById('assetType').value,
+        description: document.getElementById('assetDesc').value.trim(),
+        owner: document.getElementById('assetOwner').value.trim(),
+        tags: joinTags(document.getElementById('assetTags').value),
+      };
+      await request('/api/assets/', { method: 'POST', body: JSON.stringify(payload) });
+      await loadAssets();
+      toast('Asset created successfully / 资产创建成功');
+    } catch (e) {
+      alert('Failed to create asset / 资产创建失败: ' + e.message);
+    }
+  }
+
+  async function loadAssets() {
+    try {
+      const q = document.getElementById('assetSearch').value.trim();
+      const assetType = document.getElementById('assetTypeFilter').value;
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (assetType) params.set('asset_type', assetType);
+      const data = await request('/api/assets/' + (params.toString() ? ('?' + params.toString()) : ''));
+      const box = document.getElementById('assetsList');
+      if (!data.length) {
+        box.innerHTML = '<div class="muted">No assets found / 暂无资产</div>';
+        return;
+      }
+      box.innerHTML = data.map(a => `
+        <div class="item" onclick="fillAsset(${a.id}, '${escapeHtml(a.name)}')">
+          <div><strong>#${a.id}</strong> ${escapeHtml(a.name)} <span class="pill">${escapeHtml(a.asset_type)}</span></div>
+          <div class="muted">Owner: ${escapeHtml(a.owner || '')}</div>
+          <div class="muted">Tags: ${(a.tags || []).map(t => `<span class="pill">${escapeHtml(t)}</span>`).join(' ')}</div>
+          <div class="muted">${escapeHtml(a.description || '')}</div>
+        </div>
+      `).join('');
+    } catch (e) {
+      document.getElementById('assetsList').innerHTML = `<div class="muted">Failed to load / 加载失败: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function fillAsset(id, name) {
+    document.getElementById('versionAssetId').value = id;
+    document.getElementById('versionListAssetId').value = id;
+    document.getElementById('changeAssetId').value = id;
+    toast(`Selected asset / 已选中资产 #${id} ${name}`);
+  }
+
+  async function createVersion() {
+    try {
+      const assetId = parseInt(document.getElementById('versionAssetId').value, 10);
+      const payload = {
+        version_tag: document.getElementById('versionTag').value.trim(),
+        system_prompt: document.getElementById('versionSystemPrompt').value,
+        context_template: document.getElementById('versionContextTemplate').value,
+        workflow_spec: safeJsonParse(document.getElementById('versionWorkflowSpec').value, {}),
+        examples: safeJsonParse(document.getElementById('versionExamples').value, []),
+        guardrails: safeJsonParse(document.getElementById('versionGuardrails').value, []),
+        variables_schema: safeJsonParse(document.getElementById('versionSchema').value, {}),
+        change_summary: document.getElementById('versionChangeSummary').value.trim(),
+        created_by: document.getElementById('versionCreatedBy').value.trim(),
+        set_active: document.getElementById('versionActive').checked,
+      };
+      await request(`/api/assets/${assetId}/versions/`, { method: 'POST', body: JSON.stringify(payload) });
+      await loadVersions();
+      toast('Version created successfully / 版本创建成功');
+    } catch (e) {
+      alert('Failed to create version / 版本创建失败: ' + e.message);
+    }
+  }
+
+  async function loadVersions() {
+    try {
+      const assetId = parseInt(document.getElementById('versionListAssetId').value, 10);
+      const data = await request(`/api/assets/${assetId}/versions/`);
+      const box = document.getElementById('versionsList');
+      if (!data.length) {
+        box.innerHTML = '<div class="muted">No versions found / 暂无版本</div>';
+        return;
+      }
+      box.innerHTML = data.map(v => `
+        <div class="item">
+          <div><strong>#${v.id}</strong> ${escapeHtml(v.version_tag)} <span class="pill">${escapeHtml(v.status)}</span></div>
+          <div class="muted">Created by: ${escapeHtml(v.created_by || '')}</div>
+          <div class="muted">Summary: ${escapeHtml(v.change_summary || '')}</div>
+          <div class="row" style="margin-top:8px;">
+            <button onclick="activateVersion(${v.asset_id}, ${v.id})">Activate / 激活</button>
+            <button onclick="fillVersionIds(${v.id})">Use in forms / 填入表单</button>
+          </div>
+          <div class="json small muted" style="margin-top:8px;">${escapeHtml(JSON.stringify(v, null, 2))}</div>
+        </div>
+      `).join('');
+    } catch (e) {
+      document.getElementById('versionsList').innerHTML = `<div class="muted">Failed to load / 加载失败: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function fillVersionIds(versionId) {
+    document.getElementById('changeVersionId').value = versionId;
+    document.getElementById('logVersionId').value = versionId;
+    toast(`Selected version / 已选中版本 #${versionId}`);
+  }
+
+  async function activateVersion(assetId, versionId) {
+    try {
+      await request(`/api/assets/${assetId}/versions/${versionId}/activate`, { method: 'POST' });
+      await loadVersions();
+      toast('Version activated successfully / 版本已激活');
+    } catch (e) {
+      alert('Activation failed / 激活失败: ' + e.message);
+    }
+  }
+
+  async function createChange() {
+    try {
+      const payload = {
+        commit_sha: document.getElementById('changeCommitSha').value.trim(),
+        pr_id: document.getElementById('changePrId').value.trim() || null,
+        asset_id: document.getElementById('changeAssetId').value.trim() ? parseInt(document.getElementById('changeAssetId').value, 10) : null,
+        asset_version_id: document.getElementById('changeVersionId').value.trim() ? parseInt(document.getElementById('changeVersionId').value, 10) : null,
+        risk_level: document.getElementById('changeRiskLevel').value,
+        impact_scope: joinTags(document.getElementById('changeImpactScope').value),
+        review_required: document.getElementById('changeReviewRequired').value === 'true',
+        review_status: document.getElementById('changeReviewStatus').value,
+        notes: document.getElementById('changeNotes').value.trim(),
+        created_by: document.getElementById('changeCreatedBy').value.trim(),
+      };
+      await request('/api/changes/', { method: 'POST', body: JSON.stringify(payload) });
+      await loadChanges();
+      toast('Change registered successfully / 变更已登记');
+    } catch (e) {
+      alert('Failed to register change / 登记变更失败: ' + e.message);
+    }
+  }
+
+  async function loadChange() {
+    try {
+      const sha = document.getElementById('changeLookup').value.trim();
+      const data = await request(`/api/changes/${encodeURIComponent(sha)}`);
+      document.getElementById('changeDetail').innerHTML = `<div class="json">${escapeHtml(JSON.stringify(data, null, 2))}</div>`;
+    } catch (e) {
+      document.getElementById('changeDetail').innerHTML = `<div class="muted">Query failed / 查询失败: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function loadChanges() {
+    try {
+      const data = await request('/api/changes/');
+      const box = document.getElementById('changesList');
+      if (!data.length) {
+        box.innerHTML = '<div class="muted">No changes found / 暂无变更</div>';
+        return;
+      }
+      box.innerHTML = data.map(c => `
+        <div class="item" onclick="document.getElementById('changeLookup').value='${escapeJs(c.commit_sha)}'">
+          <div><strong>${escapeHtml(c.commit_sha)}</strong> <span class="pill">${escapeHtml(c.risk_level)}</span> <span class="pill">${escapeHtml(c.review_status)}</span></div>
+          <div class="muted">asset_id: ${c.asset_id ?? '-'} | asset_version_id: ${c.asset_version_id ?? '-'}</div>
+          <div class="muted">impact_scope: ${(c.impact_scope || []).map(x => `<span class="pill">${escapeHtml(x)}</span>`).join(' ')}</div>
+        </div>
+      `).join('');
+    } catch (e) {
+      document.getElementById('changesList').innerHTML = `<div class="muted">Failed to load / 加载失败: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function createLog() {
+    try {
+      const payload = {
+        asset_version_id: parseInt(document.getElementById('logVersionId').value, 10),
+        request_id: document.getElementById('logRequestId').value.trim() || null,
+        model_name: document.getElementById('logModelName').value.trim(),
+        input_variables: safeJsonParse(document.getElementById('logInputVars').value, {}),
+        llm_output: document.getElementById('logOutput').value,
+        latency_ms: parseInt(document.getElementById('logLatency').value || '0', 10),
+        token_usage: parseInt(document.getElementById('logTokens').value || '0', 10),
+        created_by: document.getElementById('logCreatedBy').value.trim(),
+      };
+      await request('/api/logs/', { method: 'POST', body: JSON.stringify(payload) });
+      await loadLogs();
+      toast('Log recorded successfully / 日志已写入');
+    } catch (e) {
+      alert('Failed to record log / 写入日志失败: ' + e.message);
+    }
+  }
+
+  async function loadLogs() {
+    try {
+      const params = new URLSearchParams();
+      const versionId = document.getElementById('logsFilterVersionId').value.trim();
+      const requestId = document.getElementById('logsFilterRequestId').value.trim();
+      if (versionId) params.set('asset_version_id', versionId);
+      if (requestId) params.set('request_id', requestId);
+      const data = await request('/api/logs/' + (params.toString() ? ('?' + params.toString()) : ''));
+      const box = document.getElementById('logsList');
+      if (!data.length) {
+        box.innerHTML = '<div class="muted">No logs found / 暂无日志</div>';
+        return;
+      }
+      box.innerHTML = data.map(l => `
+        <div class="item">
+          <div><strong>#${l.id}</strong> asset_version_id: ${l.asset_version_id} <span class="pill">${escapeHtml(l.model_name || '')}</span></div>
+          <div class="muted">request_id: ${escapeHtml(l.request_id || '-')} | latency: ${l.latency_ms}ms | tokens: ${l.token_usage}</div>
+          <div class="json small muted">${escapeHtml(JSON.stringify(l.input_variables || {}, null, 2))}</div>
+        </div>
+      `).join('');
+    } catch (e) {
+      document.getElementById('logsList').innerHTML = `<div class="muted">Failed to load / 加载失败: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function checkGate() {
+    try {
+      const payload = {
+        commit_sha: document.getElementById('gateCommitSha').value.trim(),
+        is_ai_related: document.getElementById('gateAiRelated').checked,
+      };
+      const data = await request('/api/ci/gate/check', { method: 'POST', body: JSON.stringify(payload) });
+      document.getElementById('gateResult').innerHTML = `
+        <div><strong>Status:</strong> <span class="status ${escapeHtml(data.status)}">${escapeHtml(data.status)}</span></div>
+        <div class="muted" style="margin-top:8px;">commit_sha: ${escapeHtml(data.commit_sha)}</div>
+        <div class="muted" style="margin-top:8px;">Reasons / 检查说明:</div>
+        <div class="json">${escapeHtml(JSON.stringify(data.reasons || [], null, 2))}</div>
+        <div class="muted" style="margin-top:8px;">Change Request / 关联变更:</div>
+        <div class="json">${escapeHtml(JSON.stringify(data.change_request || {}, null, 2))}</div>
+      `;
+    } catch (e) {
+      document.getElementById('gateResult').innerHTML = `<div class="muted">Check failed / 检查失败: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function escapeJs(str) {
+    return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+
+  loadAssets();
+  loadChanges();
+  loadLogs();
+  pingHealth();
+</script>
+</body>
+</html>
